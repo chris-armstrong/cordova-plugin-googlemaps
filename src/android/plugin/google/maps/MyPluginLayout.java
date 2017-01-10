@@ -33,6 +33,7 @@ import java.util.TimerTask;
 
 @SuppressWarnings("deprecation")
 public class MyPluginLayout extends FrameLayout implements ViewTreeObserver.OnScrollChangedListener, ViewTreeObserver.OnGlobalLayoutListener {
+  private String TAG = "Layout";
   private CordovaWebView webView;
   private View browserView;
   private ViewGroup root;
@@ -53,6 +54,7 @@ public class MyPluginLayout extends FrameLayout implements ViewTreeObserver.OnSc
   private float zoomScale;
 
   public Timer redrawTimer;
+  private boolean hasReorganizedViewLayout;
 
   @Override
   public void onGlobalLayout() {
@@ -156,9 +158,20 @@ public class MyPluginLayout extends FrameLayout implements ViewTreeObserver.OnSc
     this.webView = webView;
     this.root = (ViewGroup) browserView.getParent();
     this.context = browserView.getContext();
-    //if (Build.VERSION.SDK_INT >= 21 || "org.xwalk.core.XWalkView".equals(browserView.getClass().getName())) {
-    //  browserView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-    //}
+  }
+
+  public void reorganizeViewLayout() {
+    if (this.hasReorganizedViewLayout) {
+      return;
+    }
+
+    this.hasReorganizedViewLayout = true;
+
+    if (Build.VERSION.SDK_INT >= 21 || "org.xwalk.core.XWalkView".equals(browserView.getClass().getName())) {
+      browserView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+    }
+
+    updateCrosswalkZOrder();
 
     zoomScale = Resources.getSystem().getDisplayMetrics().density;
     frontLayer = new FrontLayerLayout(this.context);
@@ -183,26 +196,10 @@ public class MyPluginLayout extends FrameLayout implements ViewTreeObserver.OnSc
 
     browserView.setDrawingCacheEnabled(false);
 
-
     this.addView(scrollView);
     this.addView(frontLayer);
     root.addView(this);
-    browserView.setBackgroundColor(Color.TRANSPARENT);
-    /*
-    if("org.xwalk.core.XWalkView".equals(browserView.getClass().getName())
-      || "org.crosswalk.engine.XWalkCordovaView".equals(browserView.getClass().getName())) {
-      try {
-    // view.setZOrderOnTop(true)
-    // Called just in time as with root.setBackground(...) the color
-    // come in front and take the whole screen
-        browserView.getClass().getMethod("setZOrderOnTop", boolean.class)
-          .invoke(browserView, true);
-      }
-      catch(Exception e) {
-        e.printStackTrace();
-      }
-    }
-    */
+
     scrollView.setHorizontalScrollBarEnabled(false);
     scrollView.setVerticalScrollBarEnabled(false);
 
@@ -211,11 +208,25 @@ public class MyPluginLayout extends FrameLayout implements ViewTreeObserver.OnSc
     mActivity.getWindow().getDecorView().requestFocus();
   }
 
+  public void updateCrosswalkZOrder() {
+    browserView.setBackgroundColor(Color.TRANSPARENT);
+    if("org.xwalk.core.XWalkView".equals(browserView.getClass().getName())
+            || "org.crosswalk.engine.XWalkCordovaView".equals(browserView.getClass().getName())) {
+      try {
+        // view.setZOrderOnTop(true)
+        // Called just in time as with root.setBackground(...) the color
+        // come in front and take the whole screen
+        browserView.getClass().getMethod("setZOrderOnTop", boolean.class)
+                .invoke(browserView, true);
+      }
+      catch(Exception e) {
+        Log.w(TAG, "Unable to setup plugin layout for Crosswalk", e);
+      }
+    }
+  }
 
 
   public void putHTMLElements(JSONObject elements)  {
-
-
     HashMap<String, Bundle> newBuffer = new HashMap<String, Bundle>();
     HashMap<String, RectF> newBufferRectFs = new HashMap<String, RectF>();
 
@@ -437,6 +448,8 @@ public class MyPluginLayout extends FrameLayout implements ViewTreeObserver.OnSc
       return;
     }
 
+    this.reorganizeViewLayout();
+
     if (!HTMLNodes.containsKey(pluginMap.mapDivId)) {
       Bundle dummyInfo = new Bundle();
       dummyInfo.putDouble("offsetX", 0);
@@ -446,6 +459,8 @@ public class MyPluginLayout extends FrameLayout implements ViewTreeObserver.OnSc
       HTMLNodeRectFs.put(pluginMap.mapDivId, new RectF(0, 3000, 100, 100));
     }
     pluginMaps.put(pluginMap.mapId, pluginMap);
+
+
 
     mActivity.runOnUiThread(new Runnable() {
       @Override
@@ -457,7 +472,6 @@ public class MyPluginLayout extends FrameLayout implements ViewTreeObserver.OnSc
         scrollFrameLayout.addView(pluginMap.mapView);
 
         mActivity.getWindow().getDecorView().requestFocus();
-
         //updateViewPosition(pluginMap.mapId);
 
       }
